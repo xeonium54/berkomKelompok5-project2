@@ -7,7 +7,7 @@ def update_file(path,field,content,type):
     is_exist = os.path.exists(path)
     with open(path, type, newline='') as file:
         writer = csv.DictWriter(file, fieldnames=field)
-        if not is_exist:
+        if type == 'w' or not is_exist:
             writer.writeheader()
         writer.writerows(content)
 
@@ -37,6 +37,38 @@ def load_parkir(file_parkir):
         return
     with open(file_parkir, 'r', newline='') as f:
         reader = csv.DictReader(f)
+        expected_fields = {'plat_nomor', 'waktu_masuk'}
+        if not reader.fieldnames or not expected_fields.issubset(set(reader.fieldnames)):
+            f.seek(0)
+            raw = list(csv.reader(f))
+            repaired = []
+            for row in raw:
+                if len(row) == 2:
+                    plat, waktu = row[0].strip(), row[1].strip()
+                    slot_id = ''
+                elif len(row) >= 3:
+                    plat, slot_id, waktu = row[0].strip(), row[1].strip(), row[2].strip()
+                else:
+                    continue
+                repaired.append({'plat_nomor': plat, 'slot_id': slot_id, 'waktu_masuk': waktu})
+
+            if repaired:
+                update_file(file_parkir, G.FIELD_PARKIR, repaired, 'w')
+
+            for row in repaired:
+                try:
+                    plat = row['plat_nomor']
+                    waktu = datetime.datetime.fromisoformat(row['waktu_masuk'])
+                    G.kendaraan_parkir[plat] = waktu
+                    if row.get('slot_id'):
+                        if row['slot_id']:
+                            G.slot_assignment[row['slot_id']] = plat
+                except Exception:
+                    continue
+            return
+
+        f.seek(0)
+        reader = csv.DictReader(f)
         for row in reader:
             if not row.get('plat_nomor') or not row.get('waktu_masuk'):
                 continue
@@ -45,7 +77,8 @@ def load_parkir(file_parkir):
                 waktu = datetime.datetime.fromisoformat(row['waktu_masuk'])
                 G.kendaraan_parkir[plat] = waktu
                 if row.get('slot_id'):
-                    G.slot_assignment[row['slot_id']] = plat
+                    if row['slot_id']:
+                        G.slot_assignment[row['slot_id']] = plat
             except Exception:
                 continue
 
