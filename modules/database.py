@@ -12,7 +12,6 @@ def update_file(path,field,content,type):
         writer.writerows(content)
 
 def load_config(file_config):
-    # Read config file and update module-level globals in modules.global_variables (G)
     if os.path.exists(file_config):
         slot_notexist = True
         tarif_notexist = True
@@ -34,7 +33,6 @@ def load_config(file_config):
 
 #load FILE_PARKIR
 def load_parkir(file_parkir):
-    # Populate G.kendaraan_parkir from CSV
     if not os.path.exists(file_parkir):
         return
     with open(file_parkir, 'r', newline='') as f:
@@ -43,13 +41,16 @@ def load_parkir(file_parkir):
             if not row.get('plat_nomor') or not row.get('waktu_masuk'):
                 continue
             try:
-                G.kendaraan_parkir[row['plat_nomor']] = datetime.datetime.fromisoformat(row['waktu_masuk'])
+                plat = row['plat_nomor']
+                waktu = datetime.datetime.fromisoformat(row['waktu_masuk'])
+                G.kendaraan_parkir[plat] = waktu
+                if row.get('slot_id'):
+                    G.slot_assignment[row['slot_id']] = plat
             except Exception:
                 continue
 
 #Load FILE_HISTORY
 def load_history(file_history):
-    # Load history and aggregate total_pendapatan and jumlah_transaksi in G
     if not os.path.exists(file_history):
         return
     with open(file_history, 'r', newline='') as f:

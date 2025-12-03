@@ -3,6 +3,7 @@ import csv
 import os
 import modules.global_variables as G
 from modules.utility import clear_screen
+from modules.slot_management import display_slot_matrix
 
 def dashboard(total_slot, kendaraan_parkir, jumlah_transaksi, total_pendapatan):
     clear_screen()
@@ -18,6 +19,10 @@ def dashboard(total_slot, kendaraan_parkir, jumlah_transaksi, total_pendapatan):
     print(f"Total Pendapatan: Rp {total_pendapatan:,.2f}")
     print(f"Total Transaksi : {jumlah_transaksi} kendaraan")
     print("-------------------------")
+    
+    # Display slot matrix visualization
+    print(display_slot_matrix(G.slot_assignment))
+    
     input("\nTekan [Enter] untuk kembali...")
 
 def riwayat_transaksi(file_history):
@@ -37,14 +42,13 @@ def riwayat_transaksi(file_history):
     input("\n[Enter] untuk kembali...")
 
 def update_tarif(tarif_baru, file_config=None):
-    # Update the tarif value in the config file and in the global variables module
     if file_config is None:
         file_config = G.FILE_CONFIG
 
     G.TARIF_PER_JAM = tarif_baru
 
     newline = []
-    # If file doesn't exist, create it with current values
+    
     if not os.path.exists(file_config):
         with open(file_config, 'w') as file:
             file.writelines([f"TOTAL_SLOT={G.TOTAL_SLOT}\n", f"TARIF_PER_JAM={tarif_baru}\n"])

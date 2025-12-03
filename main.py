@@ -1,10 +1,9 @@
-import os
 import datetime
-import csv
 import modules.global_variables as G
 from modules.database import update_file, load_config, load_history, load_parkir
 from modules.utility import clear_screen, create_listofdict
 from modules.payment import hitung_durasi, hitung_jam_efektif, bayar
+from modules.slot_management import display_slot_matrix, select_slot, generate_slot_id
 from modules.admin import dashboard, riwayat_transaksi, atur_tarif
 
 FILE_ADMIN =  G.FILE_ADMIN
@@ -17,10 +16,6 @@ FIELD_PARKIR = G.FIELD_PARKIR
 TOTAL_SLOT = G.TOTAL_SLOT
 TARIF_PER_JAM = G.TARIF_PER_JAM
 
-kendaraan_parkir = {} 
-total_pendapatan = 0.0
-jumlah_transaksi = 0
-
 admin_login_state = False
 
 load_config(FILE_CONFIG)
@@ -31,7 +26,7 @@ load_history(FILE_HISTORY)
 while True:
     clear_screen()
     print("\n--- MENU UTAMA ---")
-    print(f"Slot Tersedia: {TOTAL_SLOT - len(kendaraan_parkir)}")
+    print(f"Slot Tersedia: {TOTAL_SLOT - len(G.kendaraan_parkir)}")
     print("--------------------")
     print("1. Cek Slot")
     print("2. Check-In")
@@ -43,7 +38,7 @@ while True:
     
     if pilihan == '1': #cek slot
         clear_screen()
-        terisi = len(kendaraan_parkir)
+        terisi = len(G.kendaraan_parkir)
         kosong = TOTAL_SLOT - terisi
 
         print(" --- CEK KETERSEDIAAN ---")
@@ -59,7 +54,7 @@ while True:
         print(" --- CHECK IN ---")
         print("=" * 40)
 
-        if len(kendaraan_parkir) == TOTAL_SLOT:
+        if len(G.kendaraan_parkir) == TOTAL_SLOT:
             print("Maaf parkir penuh.")
             input("\n[Enter] untuk kembali...")
             continue
@@ -70,19 +65,43 @@ while True:
             input("\n[Enter] untuk kembali...")
             continue
         
-        if plat_nomor in kendaraan_parkir:
+        if plat_nomor in G.kendaraan_parkir:
             print(f"[ERROR]\nKendaraan dengan plat nomor {plat_nomor} sudah ada")
             input("\n[Enter] untuk kembali...")
             continue
+        
+        # Display slot matrix and let user select a slot
+        print(display_slot_matrix(G.slot_assignment))
+        
+        while True:
+            slot_id = select_slot()
+            if slot_id in G.slot_assignment:
+                print(f"[ERROR] Slot {slot_id} sudah terisi.")
+            else:
+                break
+        
         waktu_masuk = datetime.datetime.now()
 
-        kendaraan_parkir[plat_nomor] = waktu_masuk
+        G.kendaraan_parkir[plat_nomor] = waktu_masuk
+        G.slot_assignment[slot_id] = plat_nomor
 
-        kendaraan_parkir_baru = create_listofdict(kendaraan_parkir, 'plat_nomor', 'waktu_masuk')
+        # Build parkir.csv records with slot_id from slot_assignment mapping
+        parkir_records = []
+        for plat in G.kendaraan_parkir.keys():
+            slot_for_plat = ''
+            for sid, p in G.slot_assignment.items():
+                if p == plat:
+                    slot_for_plat = sid
+                    break
+            parkir_records.append({
+                'plat_nomor': plat,
+                'slot_id': slot_for_plat,
+                'waktu_masuk': G.kendaraan_parkir[plat].isoformat()
+            })
 
-        update_file(FILE_PARKIR, FIELD_PARKIR, kendaraan_parkir_baru, 'w')
+        update_file(FILE_PARKIR, FIELD_PARKIR, parkir_records, 'w')
 
-        print(f"Kendaraan dengan plat nomor {plat_nomor} tercatat pada {waktu_masuk.strftime("%Y-%m-%d %H:%M:%S")}")
+        print(f"Kendaraan dengan plat nomor {plat_nomor} tercatat pada slot {slot_id} ({waktu_masuk.strftime("%Y-%m-%d %H:%M:%S")})")
         input("\n[Enter] untuk kembali...")
 
     elif pilihan == '3': #check out
@@ -92,12 +111,12 @@ while True:
 
         plat_nomor = input("Masukan plat nomor: ").upper().strip()
 
-        if plat_nomor not in kendaraan_parkir:
+        if plat_nomor not in G.kendaraan_parkir:
             print("Plat nomor tidak valid/tidak ada")
             input("\n[Enter] untuk kembali...")
             continue
 
-        waktu_masuk = kendaraan_parkir[plat_nomor]
+        waktu_masuk = G.kendaraan_parkir[plat_nomor]
         waktu_keluar = datetime.datetime.now()
 
         durasi_parkir = hitung_durasi(waktu_masuk, waktu_keluar)
@@ -107,11 +126,32 @@ while True:
 
         bayar(plat_nomor, waktu_masuk, waktu_keluar, durasi_parkir, jam_efektif, TARIF_PER_JAM, tarif_akhir)
 
-        del kendaraan_parkir[plat_nomor]
+        # Find and free the slot
+        slot_id_to_free = None
+        for slot_id, plate in G.slot_assignment.items():
+            if plate == plat_nomor:
+                slot_id_to_free = slot_id
+                break
+        
+        del G.kendaraan_parkir[plat_nomor]
+        if slot_id_to_free:
+            del G.slot_assignment[slot_id_to_free]
 
-        kendaraan_parkir_baru = create_listofdict(kendaraan_parkir, 'plat_nomor', 'waktu_masuk')
+        # Rebuild parkir.csv with remaining vehicles and their slot assignments
+        parkir_records = []
+        for plat in G.kendaraan_parkir.keys():
+            slot_for_plat = ''
+            for sid, p in G.slot_assignment.items():
+                if p == plat:
+                    slot_for_plat = sid
+                    break
+            parkir_records.append({
+                'plat_nomor': plat,
+                'slot_id': slot_for_plat,
+                'waktu_masuk': G.kendaraan_parkir[plat].isoformat()
+            })
 
-        update_file(FILE_PARKIR, FIELD_PARKIR, kendaraan_parkir_baru, 'w')
+        update_file(FILE_PARKIR, FIELD_PARKIR, parkir_records, 'w')
 
         history_baru = [{
             'plat': plat_nomor,
@@ -121,12 +161,12 @@ while True:
             'tarif': tarif_akhir
         }]
 
-        total_pendapatan += tarif_akhir
-        jumlah_transaksi += 1
+        G.total_pendapatan += tarif_akhir
+        G.jumlah_transaksi += 1
 
         update_file(FILE_HISTORY, FIELD_HISTORY, history_baru, 'a')
 
-        print(f"Pembayaran {plat_nomor} sukses. Kendaraan keluar.")
+        print(f"Pembayaran {plat_nomor} sukses. Kendaraan keluar dari slot {slot_id_to_free}.")
         input("\n[Enter] untuk kembali...")
     
     elif pilihan == '4':
@@ -170,7 +210,7 @@ while True:
 
             pilihan_admin = input("Pilih menu admin (0-3): ")
             if pilihan_admin == '1':
-                dashboard(TOTAL_SLOT, kendaraan_parkir, jumlah_transaksi, total_pendapatan)
+                dashboard(TOTAL_SLOT, G.kendaraan_parkir, G.jumlah_transaksi, G.total_pendapatan)
             elif pilihan_admin == '2':
                 riwayat_transaksi(FILE_HISTORY)
             elif pilihan_admin == '3':
